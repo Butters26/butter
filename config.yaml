@@ -1,0 +1,31 @@
+external_tools:
+  enabled: true
+  javascript:
+  - eslint
+  python:
+  - pylint
+  - flake8
+  - bandit
+  shell:
+  - shellcheck
+ignore_patterns:
+- '*.pyc'
+- '*.pyo'
+- __pycache__/*
+- node_modules/*
+- .git/*
+- '*.min.js'
+- '*.bundle.js'
+- dist/*
+- build/*
+rules:
+  check_code_style: true
+  check_complexity: true
+  check_debug_statements: true
+  check_security_issues: true
+  check_todos: true
+  max_complexity: 10
+  max_line_length: 120
+severity_overrides:
+  E501: LOW
+  W503: LOW

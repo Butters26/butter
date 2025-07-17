@@ -1,0 +1,201 @@
+
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Bug Detection Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                .header { background: #f5f5f5; padding: 20px; border-radius: 5px; }
+                .severity-critical { color: #d32f2f; }
+                .severity-high { color: #f57c00; }
+                .severity-medium { color: #fbc02d; }
+                .severity-low { color: #1976d2; }
+                .bug-item { margin: 10px 0; padding: 10px; border-left: 4px solid #ccc; }
+                .file-header { font-weight: bold; margin-top: 20px; }
+                .suggestion { font-style: italic; color: #666; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🔍 Bug Detection Report</h1>
+                <p>Total issues found: 25</p>
+            </div>
+        <div class="file-header">📄 examples/buggy_code.py</div>
+            <div class="bug-item severity-low">
+                <strong>Line 14:0 - TODO</strong>
+                 (custom)
+                <br>TODO/FIXME comment found
+                <div class="suggestion">💡 Address this TODO item</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 21:8 - DebugStatement</strong>
+                 (custom)
+                <br>Debug print statement found
+                <div class="suggestion">💡 Remove debug prints before production</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 69:120 - LineLength</strong>
+                 (custom)
+                <br>Line too long (150 > 120 characters)
+                <div class="suggestion">💡 Break long lines for better readability</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 76:4 - DebugStatement</strong>
+                 (custom)
+                <br>Debug print statement found
+                <div class="suggestion">💡 Remove debug prints before production</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 77:4 - DebugStatement</strong>
+                 (custom)
+                <br>Debug print statement found
+                <div class="suggestion">💡 Remove debug prints before production</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 80:8 - DebugStatement</strong>
+                 (custom)
+                <br>Debug print statement found
+                <div class="suggestion">💡 Remove debug prints before production</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 82:8 - DebugStatement</strong>
+                 (custom)
+                <br>Debug print statement found
+                <div class="suggestion">💡 Remove debug prints before production</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 87:0 - TODO</strong>
+                 (custom)
+                <br>TODO/FIXME comment found
+                <div class="suggestion">💡 Address this TODO item</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 88:0 - TODO</strong>
+                 (custom)
+                <br>TODO/FIXME comment found
+                <div class="suggestion">💡 Address this TODO item</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 89:0 - TODO</strong>
+                 (custom)
+                <br>TODO/FIXME comment found
+                <div class="suggestion">💡 Address this TODO item</div>
+            </div>
+            <div class="file-header">📄 examples/problematic.js</div>
+            <div class="bug-item severity-medium">
+                <strong>Line 11:13 - EqualityCheck</strong>
+                 (custom)
+                <br>Use strict equality (===) instead of ==
+                <div class="suggestion">💡 Replace == with === for type-safe comparison</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 12:8 - DebugStatement</strong>
+                 (custom)
+                <br>Debug console.log found
+                <div class="suggestion">💡 Remove debug statements before production</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 34:12 - DebugStatement</strong>
+                 (custom)
+                <br>Debug console.log found
+                <div class="suggestion">💡 Remove debug statements before production</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 56:0 - DebugStatement</strong>
+                 (custom)
+                <br>Debug console.log found
+                <div class="suggestion">💡 Remove debug statements before production</div>
+            </div>
+            
+            <div class="bug-item severity-low">
+                <strong>Line 57:0 - DebugStatement</strong>
+                 (custom)
+                <br>Debug console.log found
+                <div class="suggestion">💡 Remove debug statements before production</div>
+            </div>
+            <div class="file-header">📄 examples/bad_script.sh</div>
+            <div class="bug-item severity-low">
+                <strong>Line 1:0 - MissingSetE</strong>
+                 (custom)
+                <br>Consider using 'set -e' for better error handling
+                <div class="suggestion">💡 Add 'set -e' near the top of the script</div>
+            </div>
+            
+            <div class="bug-item severity-medium">
+                <strong>Line 14:0 - UnquotedVariable</strong>
+                 (custom)
+                <br>Unquoted variable usage detected
+                <div class="suggestion">💡 Quote variables to prevent word splitting</div>
+            </div>
+            
+            <div class="bug-item severity-medium">
+                <strong>Line 17:0 - UnquotedVariable</strong>
+                 (custom)
+                <br>Unquoted variable usage detected
+                <div class="suggestion">💡 Quote variables to prevent word splitting</div>
+            </div>
+            
+            <div class="bug-item severity-medium">
+                <strong>Line 18:0 - UnquotedVariable</strong>
+                 (custom)
+                <br>Unquoted variable usage detected
+                <div class="suggestion">💡 Quote variables to prevent word splitting</div>
+            </div>
+            
+            <div class="bug-item severity-medium">
+                <strong>Line 22:0 - UnquotedVariable</strong>
+                 (custom)
+                <br>Unquoted variable usage detected
+                <div class="suggestion">💡 Quote variables to prevent word splitting</div>
+            </div>
+            
+            <div class="bug-item severity-medium">
+                <strong>Line 27:0 - UnquotedVariable</strong>
+                 (custom)
+                <br>Unquoted variable usage detected
+                <div class="suggestion">💡 Quote variables to prevent word splitting</div>
+            </div>
+            
+            <div class="bug-item severity-medium">
+                <strong>Line 28:0 - UnquotedVariable</strong>
+                 (custom)
+                <br>Unquoted variable usage detected
+                <div class="suggestion">💡 Quote variables to prevent word splitting</div>
+            </div>
+            
+            <div class="bug-item severity-medium">
+                <strong>Line 31:0 - UnquotedVariable</strong>
+                 (custom)
+                <br>Unquoted variable usage detected
+                <div class="suggestion">💡 Quote variables to prevent word splitting</div>
+            </div>
+            
+            <div class="bug-item severity-medium">
+                <strong>Line 34:0 - UnquotedVariable</strong>
+                 (custom)
+                <br>Unquoted variable usage detected
+                <div class="suggestion">💡 Quote variables to prevent word splitting</div>
+            </div>
+            
+            <div class="bug-item severity-medium">
+                <strong>Line 42:0 - UnquotedVariable</strong>
+                 (custom)
+                <br>Unquoted variable usage detected
+                <div class="suggestion">💡 Quote variables to prevent word splitting</div>
+            </div>
+            
+        </body>
+        </html>
+        
