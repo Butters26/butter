@@ -7,7 +7,7 @@
       "description": "Consulting Services - January 2024",
       "due_date": "2024-12-31",
       "status": "paid",
-      "created_date": "2025-07-17T22:06:58.252434"
+      "created_date": "2025-09-04T12:18:37.077215"
     }
   },
   "payments": {
@@ -17,6 +17,14 @@
       "amount": 500.0,
       "payment_method": "credit_card",
       "payment_date": "2025-07-17T22:06:58.252520",
+      "status": "paid"
+    },
+    "pay_INV-2024-001_20250904_121837": {
+      "payment_id": "pay_INV-2024-001_20250904_121837",
+      "invoice_id": "INV-2024-001",
+      "amount": 500.0,
+      "payment_method": "credit_card",
+      "payment_date": "2025-09-04T12:18:37.077304",
       "status": "paid"
     }
   }
