@@ -106,6 +106,14 @@ class MondayModel:
         """Gaussian Error Linear Unit activation"""
         return 0.5 * x * (1 + np.tanh(np.sqrt(2 / np.pi) * (x + 0.044715 * x**3)))
 
+    def apply_layer_norm(self, x: np.ndarray, gamma: np.ndarray, beta: np.ndarray, eps: float = 1e-5) -> np.ndarray:
+        """Apply canonical LayerNorm over last dimension using provided affine params."""
+        x = x.astype(np.float32)
+        mean = np.mean(x, axis=-1, keepdims=True)
+        var = np.var(x, axis=-1, keepdims=True)
+        x_norm = (x - mean) / np.sqrt(var + eps)
+        return (x_norm * gamma.astype(np.float32) + beta.astype(np.float32))
+
     def softmax(self, x: np.ndarray, axis: int = -1) -> np.ndarray:
         """Compute softmax with numerical stability"""
         x_max = np.max(x, axis=axis, keepdims=True)
@@ -503,84 +511,19 @@ class MondayModel:
         return issues
 
     def _attention(self, q: np.ndarray, k: np.ndarray, v: np.ndarray, mask: Optional[np.ndarray] = None) -> np.ndarray:
-        """Compute scaled dot-product attention with numerical stability"""
-        # Convert to float64 for intermediate calculations
-        q = q.astype(np.float64)
-        k = k.astype(np.float64)
-        v = v.astype(np.float64)
-        
-        # Add small noise to prevent exact zeros
-        noise_scale = 1e-8
-        q = q + np.random.normal(0, noise_scale, q.shape)
-        k = k + np.random.normal(0, noise_scale, k.shape)
-        v = v + np.random.normal(0, noise_scale, v.shape)
-        
-        # Normalize each head
-        q = self._normalize_tensor(q)
-        k = self._normalize_tensor(k)
-        v = self._normalize_tensor(v)
-        
-        # Scaled dot product with careful normalization
+        """Scaled dot-product attention (canonical). q,k,v shapes: (B, H, T, D)."""
+        q = q.astype(np.float32)
+        k = k.astype(np.float32)
+        v = v.astype(np.float32)
         scale = 1.0 / np.sqrt(float(self.head_size))
-        
-        # Compute attention scores with stability measures
-        # Compute in chunks to avoid overflow
-        batch_size, num_heads, seq_len, head_dim = q.shape
-        scores = np.zeros((batch_size, num_heads, seq_len, seq_len), dtype=np.float64)
-        
-        chunk_size = 32  # Process attention in chunks
-        for i in range(0, seq_len, chunk_size):
-            end_i = min(i + chunk_size, seq_len)
-            for j in range(0, seq_len, chunk_size):
-                end_j = min(j + chunk_size, seq_len)
-                
-                # Compute chunk scores
-                q_chunk = q[:, :, i:end_i, :]
-                k_chunk = k[:, :, j:end_j, :].transpose(0, 1, 3, 2)
-                chunk_scores = np.matmul(q_chunk, k_chunk)
-                chunk_scores = chunk_scores * scale
-                
-                # Normalize chunk
-                chunk_scores = self._normalize_tensor(chunk_scores)
-                
-                # Store chunk
-                scores[:, :, i:end_i, j:end_j] = chunk_scores
-        
-        # Apply mask if provided
+        scores = np.matmul(q, k.transpose(0, 1, 3, 2)) * scale  # (B,H,T,T)
         if mask is not None:
-            scores = scores + (1 - mask) * -1e2  # Less extreme masking value
-            
-        # Compute attention probabilities with stable softmax
+            scores = scores + (1.0 - mask.astype(np.float32)) * (-1e9)
         scores_max = np.max(scores, axis=-1, keepdims=True)
-        scores_shifted = scores - scores_max
-        
-        # Compute exp in chunks to avoid overflow
-        exp_scores = np.zeros_like(scores)
-        for i in range(0, seq_len, chunk_size):
-            end_i = min(i + chunk_size, seq_len)
-            chunk = scores_shifted[:, :, :, i:end_i]
-            exp_scores[:, :, :, i:end_i] = np.exp(chunk)
-        
-        # Compute attention weights with stability
-        sum_exp = np.sum(exp_scores, axis=-1, keepdims=True) + self.eps
-        attn_weights = exp_scores / sum_exp
-        
-        # Normalize attention weights
-        attn_weights = self._normalize_tensor(attn_weights)
-        
-        # Apply attention to values in chunks
-        out = np.zeros((batch_size, num_heads, seq_len, head_dim), dtype=np.float64)
-        for i in range(0, seq_len, chunk_size):
-            end_i = min(i + chunk_size, seq_len)
-            chunk_weights = attn_weights[:, :, :, i:end_i]
-            chunk_values = v[:, :, i:end_i, :]
-            chunk_out = np.matmul(chunk_weights, chunk_values)
-            chunk_out = self._normalize_tensor(chunk_out)
-            out = out + chunk_out
-            
-        # Final normalization
-        out = self._normalize_tensor(out)
-        
+        scores = scores - scores_max
+        exp_scores = np.exp(scores)
+        attn_weights = exp_scores / (np.sum(exp_scores, axis=-1, keepdims=True) + self.eps)
+        out = np.matmul(attn_weights, v)  # (B,H,T,D)
         return out.astype(np.float32)
 
     def _normalize_tensor(self, x: np.ndarray, eps: float = 1e-5) -> np.ndarray:
@@ -707,140 +650,100 @@ class MondayModel:
         return result
         
     def _matmul_in_chunks(self, a: np.ndarray, b: np.ndarray, chunk_size: int = 32) -> np.ndarray:
-        """Perform matrix multiplication in chunks to avoid overflow"""
-        # Convert to float64 for intermediate calculations
-        a = a.astype(np.float64)
-        b = b.astype(np.float64)
-        
-        # Get output shape
+        """Perform matrix multiplication in chunks. No extra normalization."""
+        a = a.astype(np.float32)
+        b = b.astype(np.float32)
         out_shape = (a.shape[0], b.shape[1]) if len(a.shape) == 2 else a.shape[:-1] + (b.shape[-1],)
-        result = np.zeros(out_shape, dtype=np.float64)
-        
-        # Reshape inputs if needed
+        result = np.zeros(out_shape, dtype=np.float32)
         if len(a.shape) > 2:
             a_2d = a.reshape(-1, a.shape[-1])
             b_2d = b
         else:
             a_2d = a
             b_2d = b
-            
-        # Process in chunks
         for i in range(0, a_2d.shape[0], chunk_size):
             end_i = min(i + chunk_size, a_2d.shape[0])
             a_chunk = a_2d[i:end_i]
-            
-            # Compute chunk result using safe_matmul
             chunk_result = self.safe_matmul(a_chunk, b_2d)
-            
-            # Store result
             if len(a.shape) > 2:
                 result.reshape(-1, b.shape[-1])[i:end_i] = chunk_result
             else:
                 result[i:end_i] = chunk_result
-        
-        # Final normalization
-        result = self._normalize_tensor(result)
-        
         return result
 
     def _forward_layer(self, x: np.ndarray, layer_id: int, mask: Optional[np.ndarray] = None) -> np.ndarray:
-        """Forward pass through a single transformer layer with stability measures"""
+        """Canonical pre-LN Transformer layer forward."""
         batch_size = x.shape[0]
         seq_len = x.shape[1]
         
         prefix = f'layer_{layer_id}'
         
-        # Layer normalization before attention
+        # Layer normalization before attention (pre-LN)
         ln_weight = self.weights[f'{prefix}.attn_ln.gamma']
         ln_bias = self.weights[f'{prefix}.attn_ln.beta']
-        ln_out = x * ln_weight + ln_bias
-        ln_out = self._normalize_tensor(ln_out)
+        ln_out = self.apply_layer_norm(x, ln_weight, ln_bias)
         
-        # Multi-head attention with shape checking and normalization
-        # Project to Q, K, V with stability measures
+        # Project to Q, K, V
         ln_flat = ln_out.reshape(-1, self.hidden_size)
-        ln_flat = self._normalize_tensor(ln_flat)
         
         # Compute Q, K, V projections in chunks
         q = self._matmul_in_chunks(ln_flat, self.weights[f'{prefix}.attn.query.weight'])
-        q = self._normalize_tensor(q).reshape(batch_size, seq_len, self.hidden_size)
-        
+        q = q.reshape(batch_size, seq_len, self.hidden_size)
         k = self._matmul_in_chunks(ln_flat, self.weights[f'{prefix}.attn.key.weight'])
-        k = self._normalize_tensor(k).reshape(batch_size, seq_len, self.hidden_size)
-        
+        k = k.reshape(batch_size, seq_len, self.hidden_size)
         v = self._matmul_in_chunks(ln_flat, self.weights[f'{prefix}.attn.value.weight'])
-        v = self._normalize_tensor(v).reshape(batch_size, seq_len, self.hidden_size)
+        v = v.reshape(batch_size, seq_len, self.hidden_size)
         
         # Reshape for multi-head attention with normalization
         q = q.reshape(batch_size, seq_len, self.num_heads, self.head_size)
         k = k.reshape(batch_size, seq_len, self.num_heads, self.head_size)
         v = v.reshape(batch_size, seq_len, self.num_heads, self.head_size)
         
-        # Normalize each head
-        for b in range(batch_size):
-            for h in range(self.num_heads):
-                q[b, :, h, :] = self._normalize_tensor(q[b, :, h, :])
-                k[b, :, h, :] = self._normalize_tensor(k[b, :, h, :])
-                v[b, :, h, :] = self._normalize_tensor(v[b, :, h, :])
-        
         # Transpose for attention computation
         q = q.transpose(0, 2, 1, 3)
         k = k.transpose(0, 2, 1, 3)
         v = v.transpose(0, 2, 1, 3)
         
-        # Compute attention with stability measures
+        # Compute attention
         attn_out = self._attention(q, k, v, mask)
         attn_out = attn_out.transpose(0, 2, 1, 3)
         
-        # Normalize attention output
-        for b in range(batch_size):
-            for h in range(self.num_heads):
-                attn_out[b, :, h, :] = self._normalize_tensor(attn_out[b, :, h, :])
-        
         # Reshape and project output
         attn_out = attn_out.reshape(batch_size, seq_len, self.hidden_size)
-        attn_out = self._normalize_tensor(attn_out)
         
-        # Output projection with normalization
+        # Output projection
         attn_flat = attn_out.reshape(-1, self.hidden_size)
-        attn_flat = self._normalize_tensor(attn_flat)
         
         # Compute output projection in chunks
         out_proj = self._matmul_in_chunks(attn_flat, self.weights[f'{prefix}.attn.output.weight'])
-        out_proj = self._normalize_tensor(out_proj).reshape(batch_size, seq_len, self.hidden_size)
+        out_proj = out_proj.reshape(batch_size, seq_len, self.hidden_size)
         out_proj = out_proj + self.weights[f'{prefix}.attn.output.bias']
-        attn_out = self._normalize_tensor(out_proj)
+        attn_out = out_proj
         
         # First residual connection
         x = x + attn_out
         
-        # Layer normalization before FFN with stability measures
+        # Layer normalization before FFN (pre-LN)
         ln_weight = self.weights[f'{prefix}.ffn_ln.gamma']
         ln_bias = self.weights[f'{prefix}.ffn_ln.beta']
-        ln_out = x * ln_weight + ln_bias
-        ln_out = self._normalize_tensor(ln_out)
+        ln_out = self.apply_layer_norm(x, ln_weight, ln_bias)
         
         # Flatten for matrix multiplication
         ln_flat = ln_out.reshape(-1, self.hidden_size)
-        ln_flat = self._normalize_tensor(ln_flat)
         
         # First FFN projection with normalization and chunking
         ffn_up = self._matmul_in_chunks(ln_flat, self.weights[f'{prefix}.ffn.up.weight'])
-        ffn_up = self._normalize_tensor(ffn_up)
         ffn_up = ffn_up + self.weights[f'{prefix}.ffn.up.bias']
         
         # Apply activation with stability measures
         ffn_act = self.gelu(ffn_up)
-        ffn_act = self._normalize_tensor(ffn_act)
         
         # Second FFN projection with normalization and chunking
         ffn_down = self._matmul_in_chunks(ffn_act, self.weights[f'{prefix}.ffn.down.weight'])
-        ffn_down = self._normalize_tensor(ffn_down)
         ffn_down = ffn_down + self.weights[f'{prefix}.ffn.down.bias']
         
         # Reshape and normalize
         ffn_out = ffn_down.reshape(batch_size, seq_len, self.hidden_size)
-        ffn_out = self._normalize_tensor(ffn_out)
         
         # Second residual connection
         x = x + ffn_out
@@ -910,12 +813,9 @@ class MondayModel:
         # Create attention mask
         mask = self.create_attention_mask(len(tokens))
         
-        # Get initial embeddings with normalization
+        # Get initial embeddings
         x = self.weights['tok_embedding'][tokens]
-        x = self._normalize_tensor(x)
-        
         pos = self.weights['position_embeddings'][:len(tokens)]
-        pos = self._normalize_tensor(pos)
         
         # Combine token and position embeddings
         x = x + pos
@@ -923,8 +823,7 @@ class MondayModel:
         # Apply embedding layer norm
         ln_weight = self.weights['embedding_ln.weight']
         ln_bias = self.weights['embedding_ln.bias']
-        x = x * ln_weight + ln_bias
-        x = self._normalize_tensor(x)
+        x = self.apply_layer_norm(x, ln_weight, ln_bias)
         
         # Add batch and sequence dimensions
         x = x.reshape(1, len(tokens), self.hidden_size)
@@ -933,7 +832,6 @@ class MondayModel:
         # Forward pass through layers with normalization
         for i in range(self.num_layers):
             x = self._forward_layer(x, i, mask)
-            x = self._normalize_tensor(x)
             assert np.isfinite(x).all(), f"non-finite activations after layer {i}"
             
         # x: (1, T, C) → take last token of first (only) batch
@@ -949,16 +847,8 @@ class MondayModel:
         assert bias.shape == (self.vocab_size,)
         logits = logits + bias
         
-        # No final layer norm - just normalize
-        logits = self._normalize_tensor(logits)
-        
-        # Final stability measures
-        logits = np.clip(logits, -10, 10)  # Less extreme clipping
-        logits = logits - np.max(logits)  # Shift for numerical stability
-        logits = logits * 0.1  # Scale down for better stability
-        
         # Apply temperature
-        logits = logits / config.temperature
+        logits = logits.astype(np.float32) / float(config.temperature)
         
         # Verify logits shape before sampling
         assert logits.ndim == 1 and logits.shape[0] == self.vocab_size, \
