@@ -126,16 +126,8 @@ class MondayModel:
         fan_in = shape[0] if len(shape) >= 1 else 1
         fan_out = shape[1] if len(shape) >= 2 else 1
         std = np.sqrt(2.0 / (fan_in + fan_out)) * scale
-        
-        # Initialize with bounded values
         weight = np.random.normal(0, std, shape).astype(np.float32)
-        
-        # Apply stability measures
-        weight = np.clip(weight, -3*std, 3*std)  # Clip outliers
-        weight = weight / (np.std(weight) + self.eps)  # Normalize
-        weight = weight * std  # Rescale to desired range
-        
-        return weight.astype(np.float32)
+        return weight
 
     def init_attention_weights(self, scale: float = 0.02) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Initialize attention weights with proper scaling"""
@@ -202,10 +194,6 @@ class MondayModel:
         if checksum != metadata['checksum']:
             raise ValueError(f"Checksum mismatch for tensor {metadata['name']}")
         
-        # Apply stability measures
-        tensor = tensor.astype(np.float64)  # Higher precision for processing
-        tensor = np.nan_to_num(tensor, nan=0.0, posinf=1.0, neginf=-1.0)
-            
         return metadata['name'], tensor, metadata
 
     def create_attention_mask(self, size: int) -> np.ndarray:
@@ -219,19 +207,6 @@ class MondayModel:
         
         # Initialize attention weights with stability measures
         q, k, v, o = self.init_attention_weights()
-        
-        # Scale attention weights for better initial stability
-        scale = np.sqrt(1.0 / self.hidden_size)
-        q = q * scale
-        k = k * scale
-        v = v * scale
-        o = o * scale
-        
-        # Normalize weights
-        q = self._normalize_tensor(q)
-        k = self._normalize_tensor(k)
-        v = self._normalize_tensor(v)
-        o = self._normalize_tensor(o)
         
         # Initialize layer norms
         attn_ln = LayerNorm(self.hidden_size)
@@ -248,14 +223,10 @@ class MondayModel:
         self.write_tensor(f, f'{prefix}.attn_ln.gamma', attn_ln.gamma)
         self.write_tensor(f, f'{prefix}.attn_ln.beta', attn_ln.beta)
         
-        # Initialize and scale FFN weights
+        # Initialize FFN weights
         ffn_scale = np.sqrt(2.0 / (self.hidden_size + self.ffn_hidden_size))
         ffn_up = self.init_weight((self.hidden_size, self.ffn_hidden_size)) * ffn_scale
         ffn_down = self.init_weight((self.ffn_hidden_size, self.hidden_size)) * ffn_scale
-        
-        # Normalize FFN weights
-        ffn_up = self._normalize_tensor(ffn_up)
-        ffn_down = self._normalize_tensor(ffn_down)
         
         # Write FFN components
         self.write_tensor(f, f'{prefix}.ffn.up.weight', ffn_up)
@@ -268,11 +239,6 @@ class MondayModel:
         attn_bias = np.random.normal(0, 0.001, self.hidden_size).astype(np.float32)
         ffn_bias1 = np.random.normal(0, 0.001, self.ffn_hidden_size).astype(np.float32)
         ffn_bias2 = np.random.normal(0, 0.001, self.hidden_size).astype(np.float32)
-        
-        # Normalize biases
-        attn_bias = self._normalize_tensor(attn_bias)
-        ffn_bias1 = self._normalize_tensor(ffn_bias1)
-        ffn_bias2 = self._normalize_tensor(ffn_bias2)
         
         # Write biases
         self.write_tensor(f, f'{prefix}.attn.output.bias', attn_bias)
@@ -318,8 +284,6 @@ class MondayModel:
             E_tok = np.random.randn(self.vocab_size, self.hidden_size).astype(np.float32) * (1.0 / np.sqrt(self.hidden_size))
             # Initialize special tokens with slightly larger values
             E_tok[:4] = np.random.randn(4, self.hidden_size).astype(np.float32) * (2.0 / np.sqrt(self.hidden_size))
-            # Normalize embeddings
-            E_tok = self._normalize_tensor(E_tok)
             self.write_tensor(f, 'tok_embedding', E_tok)
             
             # Tie output projection to embeddings, with the ONLY canonical name
@@ -346,7 +310,6 @@ class MondayModel:
                     pos[pos_idx, i] = np.sin(pos_idx / (10000 ** (i / self.hidden_size)))
                     if i + 1 < self.hidden_size:
                         pos[pos_idx, i + 1] = np.cos(pos_idx / (10000 ** (i / self.hidden_size)))
-            pos = self._normalize_tensor(pos)
             self.write_tensor(f, 'position_embeddings', pos)
             del pos
             
@@ -376,7 +339,6 @@ class MondayModel:
             
             # Add output bias with small initialization
             out_bias = np.random.normal(0, 0.001, self.vocab_size).astype(np.float32)
-            out_bias = self._normalize_tensor(out_bias)
             self.write_tensor(f, 'output.bias', out_bias)
             
             del out_bias, out_ln
