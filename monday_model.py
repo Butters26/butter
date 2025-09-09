@@ -882,7 +882,8 @@ def main():
     # Choose filename based on tiny mode and avoid overwriting unless forced
     is_tiny = str(os.getenv('MONDAY_TINY', '1')).lower() in ('1','true','yes','on')
     default_name = 'monday_tiny.bin' if is_tiny else 'monday_v2.bin'
-    model_path = f"/workspace/{default_name}"
+    override_path = os.getenv('MONDAY_MODEL_PATH')
+    model_path = override_path if override_path else f"/workspace/{default_name}"
     force_rebuild = str(os.getenv('MONDAY_FORCE_REBUILD', '0')).lower() in ('1','true','yes','on')
     if force_rebuild or not os.path.exists(model_path):
         model.build_model(model_path)
