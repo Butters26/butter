@@ -205,8 +205,14 @@ def main():
     args = ap.parse_args()
 
     model_id_or_path = args.model or args.path
-    cfg = AutoConfig.from_pretrained(model_id_or_path)
-    hf_model = AutoModelForCausalLM.from_pretrained(model_id_or_path, torch_dtype=torch.float32)
+    cfg = AutoConfig.from_pretrained(model_id_or_path, trust_remote_code=True)
+    hf_model = AutoModelForCausalLM.from_pretrained(
+        model_id_or_path,
+        torch_dtype=torch.float16,
+        low_cpu_mem_usage=True,
+        device_map='cpu',
+        trust_remote_code=True,
+    )
     state = hf_model.state_dict()
     gpt2_to_monday(state, cfg, args.out)
 
