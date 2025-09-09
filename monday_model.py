@@ -79,6 +79,9 @@ class MondayModel:
         # Initialize weights dict
         self.weights = {}
         self.loaded = False
+        self.header_info: Dict[str, Union[int, str, Dict]] = {}
+        self.num_tensors_declared: int = 0
+        self.num_tensors_loaded: int = 0
         
         # Monday's personality traits (now used for output biasing)
         self.traits = {
@@ -393,8 +396,11 @@ class MondayModel:
             
             if header['magic'] != 'MOND':
                 raise ValueError("Invalid model file format")
+            self.header_info = header
+            self.num_tensors_declared = int(header.get('num_tensors', 0))
             
             # Load all tensors
+            loaded_count = 0
             for _ in range(header['num_tensors']):
                 name, tensor, meta = self.read_tensor(f)
                 if name == '_meta':
@@ -404,8 +410,10 @@ class MondayModel:
                     self.num_layers = int(meta['num_layers'])
                     self.num_heads = int(meta['num_heads'])
                     self.head_size = int(meta['head_size'])
+                    loaded_count += 1
                     continue
                 self.weights[name] = tensor
+                loaded_count += 1
             
             # Validate critical tensors
             E_tok = self.weights['tok_embedding']  # expect (V, C)
@@ -421,7 +429,78 @@ class MondayModel:
             print(f"E_tok: {E_tok.shape}, W_out: {W_out.shape}")
                 
         self.loaded = True
+        self.num_tensors_loaded = loaded_count
         self.logger.info("Model loaded successfully")
+
+    def validate(self) -> List[str]:
+        """Validate loaded tensors for presence, shapes, and finiteness."""
+        issues: List[str] = []
+        if not self.loaded:
+            issues.append("Model not loaded")
+            return issues
+        
+        # Helper to check tensor
+        def check(name: str, expected_shape: Optional[Tuple[int, ...]] = None):
+            if name not in self.weights:
+                issues.append(f"Missing tensor: {name}")
+                return
+            t = self.weights[name]
+            if expected_shape is not None and tuple(t.shape) != tuple(expected_shape):
+                issues.append(f"Shape mismatch for {name}: {t.shape} != {expected_shape}")
+            if t.size == 0:
+                issues.append(f"Empty tensor: {name}")
+            if not np.isfinite(t).all():
+                issues.append(f"Non-finite values in: {name}")
+        
+        V = int(self.vocab_size)
+        C = int(self.hidden_size)
+        L = int(self.num_layers)
+        H = int(self.num_heads)
+        HS = int(self.head_size)
+        FF = int(self.ffn_hidden_size)
+        T = int(self.max_seq_len)
+        
+        # Global tensors
+        check('tok_embedding', (V, C))
+        check('output.weight', (C, V))
+        check('position_embeddings', (T, C))
+        check('attention_mask', (T, T))
+        check('embedding_ln.weight', (C,))
+        check('embedding_ln.bias', (C,))
+        check('output_ln.weight', (C,))
+        check('output_ln.bias', (C,))
+        check('output.bias', (V,))
+        
+        # Per-layer tensors
+        for i in range(L):
+            p = f'layer_{i}'
+            check(f'{p}.attn.query.weight', (C, C))
+            check(f'{p}.attn.key.weight', (C, C))
+            check(f'{p}.attn.value.weight', (C, C))
+            check(f'{p}.attn.output.weight', (C, C))
+            check(f'{p}.attn.output.bias', (C,))
+            check(f'{p}.attn_ln.gamma', (C,))
+            check(f'{p}.attn_ln.beta', (C,))
+            check(f'{p}.ffn.up.weight', (C, FF))
+            check(f'{p}.ffn.up.bias', (FF,))
+            check(f'{p}.ffn.down.weight', (FF, C))
+            check(f'{p}.ffn.down.bias', (C,))
+            check(f'{p}.ffn_ln.gamma', (C,))
+            check(f'{p}.ffn_ln.beta', (C,))
+        
+        # Count check
+        declared = int(self.num_tensors_declared)
+        loaded = int(self.num_tensors_loaded)
+        if declared != 0 and loaded != declared:
+            issues.append(f"Tensor count mismatch: loaded {loaded} != declared {declared}")
+        
+        # Structural sanity checks
+        if C % max(1, H) != 0:
+            issues.append(f"hidden_size {C} not divisible by num_heads {H}")
+        if HS * H != C:
+            issues.append(f"head_size*num_heads {HS}*{H} != hidden_size {C}")
+        
+        return issues
 
     def _attention(self, q: np.ndarray, k: np.ndarray, v: np.ndarray, mask: Optional[np.ndarray] = None) -> np.ndarray:
         """Compute scaled dot-product attention with numerical stability"""
@@ -917,6 +996,13 @@ def main():
     try:
         print("\nTesting model loading and inference...")
         model.load_model(model_path)
+        issues = model.validate()
+        if issues:
+            print("\nValidation issues found:")
+            for msg in issues:
+                print(f" - {msg}")
+        else:
+            print("\nValidation passed: no issues found.")
         
         # Create a simple test sequence
         test_tokens = np.array([1, 2, 3], dtype=np.int32)  # Simple test sequence
